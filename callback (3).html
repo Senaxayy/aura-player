@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Aura — Connexion</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#080a0f; color:#f0f4ff; font-family:system-ui,sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; flex-direction:column; gap:16px; text-align:center; padding:24px; }
+  .logo { font-size:52px; }
+  h1 { font-size:22px; font-weight:700; }
+  p { color:#8892a4; font-size:13px; line-height:1.7; max-width:380px; }
+  .token-box { background:#1e2535; border:2px solid #6ee7b7; border-radius:12px; padding:14px 18px; font-family:monospace; font-size:11px; color:#6ee7b7; word-break:break-all; max-width:500px; width:100%; cursor:pointer; transition:background 0.2s; margin:4px 0; }
+  .token-box:hover { background:#252d42; }
+  .copied { background:rgba(110,231,183,0.15) !important; color:#fff !important; font-size:16px !important; padding:20px !important; }
+  .step { background:#1e2535; border-radius:10px; padding:12px 20px; font-size:13px; color:#8892a4; max-width:400px; width:100%; text-align:left; line-height:1.8; }
+  .spinner { width:32px; height:32px; border:3px solid #1e2535; border-top-color:#6ee7b7; border-radius:50%; animation:spin 0.7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .err { color:#f87171; }
+</style>
+</head>
+<body>
+<div class="logo">🌊</div>
+<div id="content"><div class="spinner"></div><p style="margin-top:12px">Connexion en cours…</p></div>
+<script>
+async function main() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const verifier = params.get('state'); // verifier passé dans state
+  const error = params.get('error');
+  const content = document.getElementById('content');
+
+  if (error) { content.innerHTML = `<h1 class="err">❌ ${error}</h1><p>Retourne dans Aura et réessaie.</p>`; return; }
+  if (!code || !verifier) { content.innerHTML = `<h1 class="err">❌ Paramètres manquants</h1><p>Retourne dans Aura et réessaie.</p>`; return; }
+
+  const clientId = new URLSearchParams(document.referrer).get('client_id') || localStorage.getItem('aura_client_id') || promptClientId();
+  if (!clientId) { content.innerHTML = `<h1 class="err">❌ Client ID manquant</h1>`; return; }
+
+  try {
+    const r = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: window.location.origin + window.location.pathname,
+        code_verifier: verifier,
+      })
+    });
+    const data = await r.json();
+    if (data.access_token) {
+      localStorage.setItem('spotify_access_token', data.access_token);
+      content.innerHTML = `
+        <h1>✅ Connecté à Spotify !</h1>
+        <p>Clique sur le token pour le copier, puis colle-le dans Aura.</p>
+        <div class="token-box" id="tbox" onclick="copyToken()">${data.access_token}</div>
+        <p style="font-size:12px">👆 Clique pour copier</p>
+        <div class="step"><strong>Dans Aura :</strong><br>1. La fenêtre de connexion est ouverte<br>2. Colle le token dans le champ<br>3. Clique <strong>Connecter →</strong></div>
+      `;
+    } else {
+      content.innerHTML = `<h1 class="err">❌ Erreur</h1><p>${data.error_description || JSON.stringify(data)}</p>`;
+    }
+  } catch(e) {
+    content.innerHTML = `<h1 class="err">❌ Erreur réseau</h1><p>${e.message}</p>`;
+  }
+}
+
+function promptClientId() {
+  return prompt('Entre ton Client ID Spotify :');
+}
+
+function copyToken() {
+  const box = document.getElementById('tbox');
+  const t = box.textContent;
+  navigator.clipboard.writeText(t).then(() => {
+    box.textContent = '✅ Copié ! Retourne dans Aura et colle-le.';
+    box.classList.add('copied');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    box.textContent = '✅ Copié !'; box.classList.add('copied');
+  });
+}
+
+main();
+</script>
+</body>
+</html>
